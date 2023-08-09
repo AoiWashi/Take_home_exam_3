@@ -4,6 +4,7 @@
 #include <string>
 #include <map>
 #include <vector>
+#include <bitset>
 
 using namespace std;
 
@@ -14,22 +15,27 @@ bool CompareStr(string a, string b);
 vector<string> SplitStrByDelim(string str, char delim);
 string TrimStrByDelim(string str, char delim);
 string space_trim(string str);
+bool process_R_type(string command, vector<string> args, string* binary_code);
+bool process_S_type(string command, vector<string> args, string* binary_code);
+bool process_I_type(string command, vector<string> args, string* binary_code);
+string Print_Binary(int num);
+bool append_arguments(string arg, string* binary_code);
+bool is_num(string str);
 
-
+map<string, string> Opcode;
+map<string, string> Operands;
+map<string, string>func_code;
 
 int main() {
 
-	map<string, string> Opcode;
 	Opcode.insert(pair<string, string>("add", "000000"));
 	Opcode.insert(pair<string, string>("sub", "000000"));
 	Opcode.insert(pair<string, string>("slt", "000000"));
 	Opcode.insert(pair<string, string>("sll", "000000"));
 	Opcode.insert(pair<string, string>("beq", "000100"));
 	Opcode.insert(pair<string, string>("addi", "001000"));
-	Opcode.insert(pair<string, string>("j", "000010"));
 
 
-	map<string, string> Operands;
 	Operands.insert(pair<string, string>("$zero", "00000"));
 	Operands.insert(pair<string, string>("$at", "00001"));
 	Operands.insert(pair<string, string>("$v0", "00010"));
@@ -63,7 +69,6 @@ int main() {
 	Operands.insert(pair<string, string>("$fp", "11110"));
 	Operands.insert(pair<string, string>("$ra", "11111"));
 
-	map<string, string>func_code;
 	func_code["add"] = "100000";
 	func_code["sub"] = "100010";
 	func_code["slt"] = "101010";
@@ -83,12 +88,12 @@ int main() {
 		string inst_sub;
 		string binary_code;
 
-		
+
 		int start_index = instruction.find(' ') + 1;
 		inst_sub = instruction.substr(start_index, instruction.length() - start_index);
 		inst_sub = space_trim(inst_sub);
 
-		if (CompareStr(command, "add") || command == "sub" || command == "slt") {
+		if (Opcode.count(command) != 0) {
 			binary_code = Opcode[command];
 
 			vector<string> arguments = SplitStrByDelim(inst_sub, ',');
@@ -97,39 +102,136 @@ int main() {
 				cout << "INVALID REGISTER NAME";
 				return 1;
 			}
-			for (int i = 0; i < arg_size; i++) {
-				string arg = arguments[i];
-				
-				if (Operands.count(arg) != 0) {
-					binary_code += Operands[arg];
-				}
-				else {
-					cout << "INVALID REGISTER NAME";
-					return 1;
+			bool success;
+			if (command == "add" || command == "sub" || command == "slt") {
+				success = process_R_type(command, arguments, &binary_code);
 
-				}
 			}
-			string shiamo = "00000";
-			binary_code += shiamo;
-			binary_code += func_code[command];
+			else if (command == "sll") {
+				success = process_S_type(command, arguments, &binary_code);
+			}
+			else if (command == "addi" || command == "beq") {
+				success = process_I_type(command, arguments, &binary_code);
+			}
+			if (!success) {
+				return 1;
+			}	
 			cout << "Machine code of the " << instruction << " is " << binary_code;
-		}
-		else if (command == "sll") {
-			binary_code = Opcode[command];
-		}
-		else if (command == "addi" || command == "beq") {
-			binary_code = Opcode[command];
-		}
-		else if (command == "J") {
-			binary_code = Opcode[command];
+		}		
+		else if (command == "j") {
+			binary_code = "000010";
+			/*if (!is_num(inst_sub)) {
+				cout << "INVALID REGISTER NAME";
+				return 1;
+			}*/
+			int num = stoi(inst_sub);
+			if (num > 67108863 || num < 0) {
+				cout << "CONSTANT IS OUT OF THE RANGE";
+				return false;
+			}
+			std::bitset<26> binary(num);
+			std::string num_binary = binary.to_string();
+			binary_code += num_binary;
+			cout << "Machine code of the " << instruction << " is " << binary_code;
 		}
 		else {
 			cout << "INVALID INSTRUCTION NAME";
+
 		}
 	}
 	
 	return 0;
-	
+
+}
+bool process_R_type(string command, vector<string> args, string* binary_code) {
+	int arg_size = args.size();
+	for (int i = 0; i < arg_size; i++) {
+		string arg = args[i];
+
+		if (!append_arguments(arg, binary_code)) {
+			cout << "INVALID REGISTER NAME";
+			return false;
+		}
+	}
+	string shiamo = "00000";
+	*binary_code += shiamo;
+	*binary_code += func_code[command];
+	return true;
+}
+
+bool process_S_type(string command, vector<string> args, string* binary_code) {
+	int arg_size = args.size();
+	for (int i = 0; i < arg_size - 1; i++) {
+		string arg = args[i];
+
+		if (!append_arguments(arg, binary_code)) {
+			cout << "INVALID REGISTER NAME";
+			return false;
+		}
+	}
+	if (!is_num(args[2])) {
+		cout << "INVALID REGISTER NAME";
+		return false;
+	}
+	int num = stoi(args[2]);
+	if (num > 31 || num < 0) {
+		cout << "CONSTANT IS OUT OF THE RANGE";
+		return false;
+	}
+	string rs2 = "00000";
+	*binary_code += rs2;
+	std::bitset<5> binary(num);
+	std::string num_binary = binary.to_string();
+	*binary_code += num_binary;
+	*binary_code += func_code[command];
+	return true;
+}
+
+bool process_I_type(string command, vector<string> args, string* binary_code) {
+	int arg_size = args.size();
+	for (int i = 0; i < arg_size - 1; i++) {
+		string arg = args[i];
+
+		if (!append_arguments(arg, binary_code)) {
+			cout << "INVALID REGISTER NAME";
+			return false;
+		}
+	}
+	if (!is_num(args[2])) {
+		cout << "INVALID REGISTER NAME";
+		return false;
+	}
+	int num = stoi(args[2]);
+	if (num > 65535 || num < 0) {	
+		cout << "CONSTANT IS OUT OF THE RANGE";
+		return false;
+	}
+	std::bitset<16> binary(num);
+	std::string num_binary = binary.to_string();
+	*binary_code += num_binary;
+	return true;
+}
+
+
+bool append_arguments(string arg, string* binary_code) {
+
+	if (Operands.count(arg) != 0) {
+		*binary_code += Operands[arg];
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+
+bool is_num(string str) {
+	int length = str.length();
+	for (int i = 0; i < length; i++) {
+		if (!isdigit(str[i])) {
+			return false;
+		}
+	}
+	return true;
 }
 
 string space_trim(string str) {
